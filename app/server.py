@@ -224,6 +224,46 @@ def handle_mentions(event, say, logger):
         logger.warning(err_msg)
         say(f'<@{user}>, {err_msg}', thread_ts=thread_ts)
 
+def extract_urls_from_message(message):
+    return re.search("(?P<url>https?://[^\s]+)", message).group("url")
+
+@app.route("/chat", methods=['POST'])
+def api_message():
+    data = jsonify(request.json)
+    user = data.user
+    message = data.message
+
+    parent_thread_ts = user
+    if parent_thread_ts not in thread_message_history:
+        thread_message_history[parent_thread_ts] = { 'dialog_texts': [], 'context_urls': set(), 'file': None}
+
+    update_thread_history(parent_thread_ts, f'User: {format_dialog_text(message)}', extract_urls_from_message(message))
+
+    urls = thread_message_history[parent_thread_ts]['context_urls']
+
+    logging.info('=====> Current thread conversation messages are:')
+    logging.info(thread_message_history[parent_thread_ts])
+
+    if len(urls) > 0:
+        future = executor.submit(get_answer_from_llama_web, thread_message_history[parent_thread_ts]['dialog_texts'], list(urls))
+    else:
+        future = executor.submit(get_answer_from_chatGPT, thread_message_history[parent_thread_ts]['dialog_texts'])
+
+    try:
+        gpt_response = future.result(timeout=300)
+        update_thread_history(parent_thread_ts, 'chatGPT: %s' % insert_space(f'{gpt_response}'))
+        logging.info(gpt_response)
+        return gpt_response
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        err_msg = 'Task timedout(5m) and was canceled.'
+        logging.warning(err_msg)
+        return err_msg
+
+@app.route("/chat/file")
+def api_file():
+    return "Hello, World!"
+
 register_slack_slash_commands(slack_app)
 scheduler.start()
 
