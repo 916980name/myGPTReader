@@ -252,16 +252,16 @@ def api_message():
     if parent_thread_ts not in thread_message_history:
         thread_message_history[parent_thread_ts] = { 'dialog_texts': [], 'context_urls': set(), 'file': None}
 
-    update_thread_history(parent_thread_ts, f'User: {format_dialog_text(message)}', extract_urls_from_message(message))
-
-    urls = thread_message_history[parent_thread_ts]['context_urls']
+    text = format_dialog_text(message)
+    urls = extract_urls_from_message(message)
 
     logging.info('=====> Current thread conversation messages are:')
-    logging.info(thread_message_history[parent_thread_ts])
+    logging.info(text)
 
-    if len(urls) > 0:
-        future = executor.submit(get_answer_from_llama_web, thread_message_history[parent_thread_ts]['dialog_texts'], list(urls))
+    if urls and len(urls) > 0:
+        future = executor.submit(get_answer_from_llama_web, text, list(urls))
     else:
+        update_thread_history(parent_thread_ts, f'User: {text}')
         future = executor.submit(get_answer_from_chatGPT, thread_message_history[parent_thread_ts]['dialog_texts'])
 
     try:
