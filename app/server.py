@@ -4,7 +4,7 @@ import os
 import requests
 from pathlib import Path
 from urllib.parse import urlparse
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_apscheduler import APScheduler
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
@@ -25,11 +25,13 @@ schedule_channel = "#daily-news"
 
 app = Flask(__name__)
 
+"""
 slack_app = App(
     token=os.environ.get("SLACK_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 slack_handler = SlackRequestHandler(slack_app)
+"""
 
 scheduler = APScheduler()
 scheduler.api_enabled = True
@@ -49,15 +51,19 @@ def send_daily_news(client, news):
         except Exception as e:
             logging.error(e)
 
+"""
 @scheduler.task('cron', id='daily_news_task', hour=1, minute=30)
 def schedule_news():
     logging.info("=====> Start to send daily news!")
     all_news_blocks = build_all_news_block()
     send_daily_news(slack_app.client, all_news_blocks)
+"""
 
+"""
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     return slack_handler.handle(request)
+"""
 
 def insert_space(text):
 
@@ -131,6 +137,7 @@ def dialog_context_keep_latest(dialog_texts, max_length=1):
 def format_dialog_text(text, voicemessage=None):
     return insert_space(text.replace("<@U04TCNR9MNF>", "")) + ('\n' + voicemessage if voicemessage else '')
 
+"""
 @slack_app.event("app_mention")
 def handle_mentions(event, say, logger):
     logger.info(event)
@@ -223,15 +230,23 @@ def handle_mentions(event, say, logger):
         err_msg = 'Task timedout(5m) and was canceled.'
         logger.warning(err_msg)
         say(f'<@{user}>, {err_msg}', thread_ts=thread_ts)
+"""
 
 def extract_urls_from_message(message):
-    return re.search("(?P<url>https?://[^\s]+)", message).group("url")
+    match = re.search("(?P<url>https?://[^\s]+)", message)
+    if match:
+        urls = set()
+        urls.add(match.group("url"))
+        logging.info('=====> contains url:', urls)
+        return list(urls)
+    else:
+        return None
 
 @app.route("/chat", methods=['POST'])
 def api_message():
-    data = jsonify(request.json)
-    user = data.user
-    message = data.message
+    data = request.json
+    user = data['user']
+    message = data['message']
 
     parent_thread_ts = user
     if parent_thread_ts not in thread_message_history:
@@ -253,7 +268,7 @@ def api_message():
         gpt_response = future.result(timeout=300)
         update_thread_history(parent_thread_ts, 'chatGPT: %s' % insert_space(f'{gpt_response}'))
         logging.info(gpt_response)
-        return gpt_response
+        return str(gpt_response)
     except concurrent.futures.TimeoutError:
         future.cancel()
         err_msg = 'Task timedout(5m) and was canceled.'
@@ -264,7 +279,9 @@ def api_message():
 def api_file():
     return "Hello, World!"
 
+"""
 register_slack_slash_commands(slack_app)
+"""
 scheduler.start()
 
 if __name__ == '__main__':
